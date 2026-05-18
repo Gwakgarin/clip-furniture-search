@@ -24,12 +24,18 @@ else:
 
 # 데이터셋 설정
 BASE_URL = "https://amazon-berkeley-objects.s3.us-east-1.amazonaws.com"
-DATA_DIR = Path(__file__).parent / "data" / "abo-listings" / "listings"
-METADATA_DIR = DATA_DIR / "metadata"
-IMAGE_METADATA_DIR = Path(__file__).parent / "data" / "abo-images" / "metadata"
-IMAGE_DIR = Path(__file__).parent / "data" / "abo-images" / "small"
-FURNITURE_PRODUCTS_FILE = DATA_DIR / "furniture_products.jsonl"
-FURNITURE_IMAGES_FILE = DATA_DIR / "furniture_images.jsonl"
+PROJECT_DIR = Path(__file__).parent
+DATA_DIR = PROJECT_DIR / "data"
+LISTINGS_DIR = DATA_DIR / "listings"
+IMAGES_DIR = DATA_DIR / "images"
+IMAGES_CLEAN_DIR = DATA_DIR / "images_clean"
+
+IMAGE_METADATA_DIR = DATA_DIR / "image_metadata"
+FURNITURE_PRODUCTS_FILE = LISTINGS_DIR / "furniture_products.jsonl"
+FURNITURE_IMAGES_FILE = DATA_DIR / "furniture_captions.csv"
+EVAL_QUERIES_FILE = DATA_DIR / "eval_queries.csv"
+IMAGE_EMBEDDINGS_FILE = DATA_DIR / "image_embeddings.npy"
+VALID_IDS_FILE = DATA_DIR / "valid_ids.csv"
 
 LISTING_SHARDS = list("0123456789abcdef")
 FURNITURE_CATEGORIES = {
@@ -53,7 +59,7 @@ def download_file(url, output_path):
 
 def download_metadata():
     """메타데이터 파일들을 다운로드합니다."""
-    METADATA_DIR.mkdir(parents=True, exist_ok=True)
+    LISTINGS_DIR.mkdir(parents=True, exist_ok=True)
     
     print("\n" + "="*60)
     print("Amazon Berkeley Objects (ABO) Metadata 다운로드 시작")
@@ -64,7 +70,7 @@ def download_metadata():
     for shard in LISTING_SHARDS:
         filename = f"listings_{shard}.json.gz"
         url = f"{BASE_URL}/listings/metadata/{filename}"
-        output_path = METADATA_DIR / filename
+        output_path = LISTINGS_DIR / filename
         
         # 이미 존재하는 파일은 스킵
         if output_path.exists():
@@ -87,7 +93,7 @@ def extract_metadata():
     print("메타데이터 추출 시작")
     print("="*60)
     
-    gz_files = sorted(METADATA_DIR.glob("listings_*.json.gz"))
+    gz_files = sorted(LISTINGS_DIR.glob("listings_*.json.gz"))
     
     if not gz_files:
         print("✗ 압축된 파일을 찾을 수 없습니다.")
@@ -122,8 +128,8 @@ def verify_data():
     print("데이터 검증")
     print("="*60)
     
-    gz_files = sorted(METADATA_DIR.glob("listings_*.json.gz"))
-    json_files = sorted(METADATA_DIR.glob("listings_*.json"))
+    gz_files = sorted(LISTINGS_DIR.glob("listings_*.json.gz"))
+    json_files = sorted(LISTINGS_DIR.glob("listings_*.json"))
     
     print(f"압축 파일: {len(gz_files)}개")
     print(f"추출된 JSON 파일: {len(json_files)}개")
@@ -152,7 +158,7 @@ def filter_furniture_products():
     print("="*60)
     print(f"대상 카테고리: {', '.join(sorted(FURNITURE_CATEGORIES))}")
     
-    json_files = sorted(METADATA_DIR.glob("listings_*.json"))
+    json_files = sorted(LISTINGS_DIR.glob("listings_*.json"))
     
     total_count = 0
     furniture_count = 0
@@ -304,15 +310,30 @@ def download_furniture_images(max_images=5000):
 
     print(f"가구 상품 수: {len(products):,}개")
     print(f"매핑된 이미지 수: {len(image_paths):,}개")
-    print(f"저장 위치: {IMAGE_DIR}")
+    print(f"저장 위치: {IMAGES_DIR}")
 
     downloaded_count = 0
     skipped_count = 0
     failed_count = 0
     manifest_count = 0
-    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGES_CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 
-    with open(FURNITURE_IMAGES_FILE, 'w', encoding='utf-8') as manifest_f:
+    with open(FURNITURE_IMAGES_FILE, 'w', encoding='utf-8', newline='') as manifest_f:
+        fieldnames = [
+            "item_id",
+            "image_id",
+            "image_path",
+            "abo_image_path",
+            "image_url",
+            "product_type",
+            "title",
+            "brand",
+            "color",
+        ]
+        writer = csv.DictWriter(manifest_f, fieldnames=fieldnames)
+        writer.writeheader()
+
         for product in tqdm(products, desc="Downloading images"):
             image_id = product.get('main_image_id')
             image_path = image_paths.get(image_id)
@@ -320,7 +341,7 @@ def download_furniture_images(max_images=5000):
                 failed_count += 1
                 continue
 
-            local_path = IMAGE_DIR / image_path
+            local_path = IMAGES_DIR / image_path
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
             if local_path.exists() and local_path.stat().st_size > 0:
@@ -347,7 +368,7 @@ def download_furniture_images(max_images=5000):
                 "brand": get_text_value(product.get("brand")),
                 "color": get_text_value(product.get("color")),
             }
-            manifest_f.write(json.dumps(record, ensure_ascii=False) + '\n')
+            writer.writerow(record)
             manifest_count += 1
 
     print("\n✓ 이미지 다운로드 단계 완료")

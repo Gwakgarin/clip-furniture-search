@@ -220,6 +220,16 @@ __marimo__/
 # Local datasets and generated outputs
 data/abo-listings/
 data/abo-images/
+data/listings/*.json
+data/listings/*.json.gz
+data/listings/furniture_products.jsonl
+data/image_metadata/
+data/images/
+data/images_clean/
+data/furniture_captions.csv
+data/eval_queries.csv
+data/image_embeddings.npy
+data/valid_ids.csv
 clip_furniture_search/data/
 *.jsonl
 *.tar
