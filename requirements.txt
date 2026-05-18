@@ -1,0 +1,10 @@
+torch
+torchvision
+open-clip-torch
+streamlit
+numpy
+pillow
+pandas
+tqdm
+deep-translator
+requests

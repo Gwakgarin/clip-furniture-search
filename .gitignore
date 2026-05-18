@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local datasets and generated outputs
+data/abo-listings/
+data/abo-images/
+clip_furniture_search/data/
+*.jsonl
+*.tar
+*.jpg
+*.jpeg
+*.png
+*.webp
