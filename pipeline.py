@@ -12,6 +12,7 @@ from pathlib import Path
 import urllib.request
 import json
 import ssl
+from collections import Counter
 from tqdm import tqdm
 
 # SSL 인증서 검증 무시 (macOS Python 3.14 문제 해결)
@@ -240,6 +241,43 @@ def get_text_value(values, preferred_languages=('ko_KR', 'en_US', 'en_GB')):
 
     return ''
 
+def normalize_text(text):
+    """CSV caption에 넣기 좋게 공백과 쉼표를 정리합니다."""
+    if not text:
+        return ''
+    return ' '.join(str(text).replace('\n', ' ').replace('\r', ' ').split()).strip(' ,')
+
+def get_english_text_value(values):
+    """CLIP 검색용 캡션에 사용할 영어 우선 텍스트를 고릅니다."""
+    return normalize_text(get_text_value(values, preferred_languages=('en_US', 'en_GB', 'ko_KR')))
+
+def build_caption(product):
+    """상품 메타데이터를 자연어 캡션 한 문장으로 변환합니다."""
+    title = get_english_text_value(product.get("item_name"))
+    brand = get_english_text_value(product.get("brand"))
+    material = get_english_text_value(product.get("material"))
+    color = get_english_text_value(product.get("color"))
+    style = get_english_text_value(product.get("style"))
+    product_type = get_product_type(product)
+    category = product_type.lower().replace('_', ' ')
+
+    if brand and title and brand.lower() not in title.lower():
+        title = f"{brand} {title}"
+
+    parts = []
+    if title:
+        parts.append(title)
+    if material:
+        parts.append(f"{material} material")
+    if color:
+        parts.append(f"{color} color")
+    if style:
+        parts.append(f"{style} style")
+    if category:
+        parts.append(category)
+
+    return ", ".join(parts)
+
 def load_furniture_products(max_images):
     """대표 이미지가 있는 가구 상품을 고유 image_id 기준으로 읽습니다."""
     if not FURNITURE_PRODUCTS_FILE.exists():
@@ -329,7 +367,10 @@ def download_furniture_images(max_images=5000):
             "product_type",
             "title",
             "brand",
+            "material",
             "color",
+            "style",
+            "caption",
         ]
         writer = csv.DictWriter(manifest_f, fieldnames=fieldnames)
         writer.writeheader()
@@ -364,9 +405,12 @@ def download_furniture_images(max_images=5000):
                 "abo_image_path": image_path,
                 "image_url": f"{BASE_URL}/images/small/{image_path}",
                 "product_type": get_product_type(product),
-                "title": get_text_value(product.get("item_name")),
-                "brand": get_text_value(product.get("brand")),
-                "color": get_text_value(product.get("color")),
+                "title": normalize_text(get_text_value(product.get("item_name"))),
+                "brand": normalize_text(get_text_value(product.get("brand"))),
+                "material": normalize_text(get_text_value(product.get("material"))),
+                "color": normalize_text(get_text_value(product.get("color"))),
+                "style": normalize_text(get_text_value(product.get("style"))),
+                "caption": build_caption(product),
             }
             writer.writerow(record)
             manifest_count += 1
@@ -379,6 +423,91 @@ def download_furniture_images(max_images=5000):
 
     return manifest_count > 0
 
+def generate_furniture_captions(max_items=5000, sample_count=5):
+    """가구 상품 메타데이터를 자연어 캡션 CSV로 변환합니다."""
+    print("\n" + "="*60)
+    print("자연어 캡션 생성")
+    print("="*60)
+    print(f"목표 캡션 수: 최대 {max_items:,}개")
+
+    products = load_furniture_products(max_images=max_items)
+    if not products:
+        return False
+
+    target_image_ids = {product.get('main_image_id') for product in products if product.get('main_image_id')}
+    image_paths = load_image_paths(target_image_ids)
+    if not image_paths:
+        print("✗ 이미지 메타데이터 매핑이 없습니다. 먼저 --step image-metadata를 실행하세요.")
+        return False
+
+    fieldnames = [
+        "item_id",
+        "image_id",
+        "image_path",
+        "abo_image_path",
+        "image_url",
+        "product_type",
+        "title",
+        "brand",
+        "material",
+        "color",
+        "style",
+        "caption",
+    ]
+
+    category_counts = Counter()
+    sample_captions = []
+    written_count = 0
+
+    with open(FURNITURE_IMAGES_FILE, 'w', encoding='utf-8', newline='') as out_f:
+        writer = csv.DictWriter(out_f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for product in tqdm(products, desc="Generating captions"):
+            image_id = product.get('main_image_id')
+            abo_image_path = image_paths.get(image_id)
+            if not image_id or not abo_image_path:
+                continue
+
+            product_type = get_product_type(product)
+            caption = build_caption(product)
+            if not caption:
+                continue
+
+            local_path = IMAGES_DIR / abo_image_path
+            record = {
+                "item_id": product.get("item_id"),
+                "image_id": image_id,
+                "image_path": str(local_path),
+                "abo_image_path": abo_image_path,
+                "image_url": f"{BASE_URL}/images/small/{abo_image_path}",
+                "product_type": product_type,
+                "title": normalize_text(get_text_value(product.get("item_name"))),
+                "brand": normalize_text(get_text_value(product.get("brand"))),
+                "material": normalize_text(get_text_value(product.get("material"))),
+                "color": normalize_text(get_text_value(product.get("color"))),
+                "style": normalize_text(get_text_value(product.get("style"))),
+                "caption": caption,
+            }
+            writer.writerow(record)
+
+            category_counts[product_type] += 1
+            written_count += 1
+            if len(sample_captions) < sample_count:
+                sample_captions.append(caption)
+
+    print(f"\n✓ {FURNITURE_IMAGES_FILE.name} 저장 완료: {written_count:,}개")
+
+    print("\n카테고리 분포:")
+    for category, count in category_counts.most_common():
+        print(f"  - {category}: {count:,}개")
+
+    print("\n샘플 캡션:")
+    for idx, caption in enumerate(sample_captions, start=1):
+        print(f"  {idx}. {caption}")
+
+    return written_count > 0
+
 def main():
     parser = argparse.ArgumentParser(
         description="ABO Dataset Pipeline",
@@ -388,6 +517,7 @@ def main():
   python pipeline.py --step download    # 데이터 다운로드
   python pipeline.py --step extract     # 압축 파일 추출
   python pipeline.py --step filter      # 가구 제품 필터링
+  python pipeline.py --step caption     # 메타데이터 기반 자연어 캡션 CSV 생성
   python pipeline.py --step images      # 필터링된 가구 대표 이미지 다운로드
   python pipeline.py --step verify      # 데이터 검증
   python pipeline.py --step all         # 모든 단계 실행
@@ -396,7 +526,7 @@ def main():
     
     parser.add_argument(
         '--step',
-        choices=['download', 'extract', 'filter', 'image-metadata', 'images', 'verify', 'all'],
+        choices=['download', 'extract', 'filter', 'image-metadata', 'caption', 'images', 'verify', 'all'],
         default='all',
         help='실행할 단계 선택 (기본값: all)'
     )
@@ -424,6 +554,9 @@ def main():
 
     if args.step in ['image-metadata']:
         success = success and download_image_metadata()
+
+    if args.step in ['caption']:
+        success = success and generate_furniture_captions(max_items=args.max_images)
 
     if args.step in ['images']:
         success = success and download_furniture_images(max_images=args.max_images)
