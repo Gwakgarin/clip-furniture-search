@@ -47,7 +47,7 @@ EXAMPLES = [
     "작은 공간에 어울리는 수납장",
 ]
 
-# CSS: 카드 이미지 높이 고정 ──────────────────────────────
+# CSS: 카드 이미지 높이 고정
 st.markdown("""
 <style>
 [data-testid="stImage"] img {
