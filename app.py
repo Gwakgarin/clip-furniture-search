@@ -8,7 +8,7 @@ from PIL import Image
 import streamlit as st
 from deep_translator import GoogleTranslator
 
-# 경로 설정 
+#  경로 설정 
 DATA_DIR = Path(__file__).parent / "data"
 IMAGE_EMBEDDINGS_FILE = DATA_DIR / "image_embeddings.npy"
 VALID_IDS_FILE = DATA_DIR / "valid_ids.csv"
@@ -47,7 +47,40 @@ EXAMPLES = [
     "작은 공간에 어울리는 수납장",
 ]
 
-# ── 모델 & 데이터 로딩 (캐시) ───────────────────────────────
+# CSS: 카드 이미지 높이 고정 ──────────────────────────────
+st.markdown("""
+<style>
+[data-testid="stImage"] img {
+    height: 220px;
+    object-fit: cover;
+    border-radius: 8px;
+    width: 100%;
+}
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 8px 0 2px 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-height: 36px;
+}
+.card-meta {
+    font-size: 12px;
+    color: #888;
+    margin: 2px 0;
+}
+.card-score {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1f77b4;
+    margin-top: 4px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+#  모델 & 데이터 로딩 (캐시) 
 @st.cache_resource
 def load_model():
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -66,7 +99,7 @@ def load_embeddings():
             rows.append(row)
     return embeddings, rows
 
-# ── 번역 함수 ───────────────────────────────────────────────
+# 번역 함수 
 def translate_to_english(query: str) -> str:
     has_korean = any('\uAC00' <= ch <= '\uD7A3' for ch in query)
     if not has_korean:
@@ -77,7 +110,17 @@ def translate_to_english(query: str) -> str:
     except Exception:
         return query
 
-# ── 검색 함수 ───────────────────────────────────────────────
+#  제목 정리 함수 
+def clean_title(title: str, caption: str) -> str:
+    if not title:
+        return caption or "제목 없음"
+    # 전체 문자 중 절반 이상이 깨진 문자면 caption으로 대체
+    broken = sum(1 for c in title if ord(c) > 0x3000 and not '\uAC00' <= c <= '\uD7A3')
+    if len(title) > 0 and broken / len(title) > 0.3:
+        return caption or "제목 없음"
+    return title
+
+# 검색 함수 
 def search(query_en: str, embeddings, rows, model, tokenizer, device,
            top_k: int = 5, category_filter: str = None):
     tokens = tokenizer([query_en]).to(device)
@@ -88,7 +131,6 @@ def search(query_en: str, embeddings, rows, model, tokenizer, device,
 
     sims = embeddings @ text_emb
 
-    # 카테고리 필터 적용
     if category_filter and category_filter != "전체":
         indices = [
             i for i, row in enumerate(rows)
@@ -97,7 +139,6 @@ def search(query_en: str, embeddings, rows, model, tokenizer, device,
     else:
         indices = list(range(len(rows)))
 
-    # 유사도 기준 정렬
     indices_sorted = sorted(indices, key=lambda i: sims[i], reverse=True)[:top_k]
 
     results = []
@@ -111,27 +152,21 @@ def search(query_en: str, embeddings, rows, model, tokenizer, device,
             "caption": row.get("caption", ""),
             "score": float(sims[idx]),
         })
-
     return results
 
-# ── 세션 상태 초기화 ────────────────────────────────────────
+# 세션 상태 
 def set_query(example):
     st.session_state.query = example
 
-# ── 페이지 설정 ─────────────────────────────────────────────
+# 페이지 설정 
 st.set_page_config(page_title="CLIP 가구 이미지 검색", layout="wide")
-st.title("CLIP 기반 자연어 가구 이미지 검색 시스템")
-st.caption(
-    "한글 자연어 검색어를 영어로 자동 번역한 뒤, "
-    "CLIP 임베딩 유사도 기반으로 가장 가까운 가구 이미지를 Top-K로 반환합니다."
-)
 
-# ── 모델 & 데이터 로드 ──────────────────────────────────────
+# 모델 & 데이터 로드 
 with st.spinner("모델 및 임베딩 데이터 로딩 중..."):
     model, preprocess, tokenizer, device = load_model()
     embeddings, rows = load_embeddings()
 
-# ── 사이드바 ────────────────────────────────────────────────
+# 사이드바 
 with st.sidebar:
     st.header("검색 설정")
     top_k = st.slider("Top-K 결과 개수", 3, 20, 5)
@@ -142,77 +177,79 @@ with st.sidebar:
     )
     st.divider()
     st.caption(f"검색 가능 이미지: {len(rows):,}장")
-    st.caption(f"임베딩 shape: {embeddings.shape}")
 
-# ── 검색창 ──────────────────────────────────────────────────
+# 헤더 
+st.title("🪑 CLIP 가구 이미지 검색")
+st.caption("한글 자연어로 원하는 가구를 검색하세요. 자동으로 영어로 번역 후 의미 기반 검색을 수행합니다.")
+
+# 검색창 
 if "query" not in st.session_state:
     st.session_state.query = ""
-
-if not st.session_state.query:
-    st.info("검색어를 입력하고 검색하기 버튼을 눌러주세요.")
 
 query_col, button_col = st.columns([5, 1])
 with query_col:
     query = st.text_input(
-        "검색어를 입력하세요",
+        "검색어",
         placeholder="예: 따뜻한 원목 식탁",
         key="query",
+        label_visibility="collapsed",
     )
 with button_col:
-    st.write("")
-    st.write("")
     search_btn = st.button("검색하기", type="primary", use_container_width=True)
 
-st.caption("예시 검색어")
+# 예시 버튼
 cols = st.columns(len(EXAMPLES))
 for i, ex in enumerate(EXAMPLES):
     with cols[i]:
-        st.button(ex, on_click=set_query, args=(ex,))
+        st.button(ex, on_click=set_query, args=(ex,), use_container_width=True)
 
-# ── 검색 실행 ───────────────────────────────────────────────
+st.divider()
+
+# 검색 실행 
 if search_btn and query:
-    start = time.time()
+    with st.spinner("검색 중..."):
+        query_en = translate_to_english(query)
+        category_filter = None if category == "전체" else category
+        results = search(
+            query_en, embeddings, rows, model, tokenizer, device,
+            top_k=top_k, category_filter=category_filter
+        )
 
-    query_en = translate_to_english(query)
-    category_filter = None if category == "전체" else category
-    results = search(
-        query_en, embeddings, rows, model, tokenizer, device,
-        top_k=top_k, category_filter=category_filter
-    )
-
-    elapsed = time.time() - start
-
-    # ── 검색 정보 ──
-    st.subheader("검색 정보")
-    st.write(f"입력 검색어: **{query}**")
-    st.write(f"번역 결과: **{query_en}**")
-    st.write(f"카테고리 필터: **{CATEGORY_LABELS[category]}**")
-
+    # 검색 정보 요약
+    info_col1, info_col2, info_col3 = st.columns(3)
+    info_col1.info(f"🔍 **{query}**  →  {query_en}")
     if results:
         top_score = results[0]['score'] * 100
         avg_score = sum(r['score'] for r in results) / len(results) * 100
-        col1, col2 = st.columns(2)
-        col1.metric("최고 유사도", f"{top_score:.1f}%")
-        col2.metric("평균 유사도", f"{avg_score:.1f}%")
+        info_col2.metric("최고 유사도", f"{top_score:.1f}%")
+        info_col3.metric("평균 유사도", f"{avg_score:.1f}%")
 
-    # ── 검색 결과 ──
     st.subheader(f"검색 결과 Top-{top_k}")
 
     if not results:
         st.warning("검색 결과가 없습니다. 다른 검색어를 입력해보세요.")
     else:
-        result_cols = st.columns(3)
+        cols = st.columns(4)
         for idx, result in enumerate(results):
-            with result_cols[idx % 3]:
+            with cols[idx % 4]:
+                # 이미지
                 img_path = result["image_path"]
-                # 로컬 이미지 우선, 없으면 URL
-                if img_path and Path(img_path).exists():
-                    st.image(img_path, use_container_width=True)
-                elif result["image_url"]:
-                    st.image(result["image_url"], use_container_width=True)
-                else:
-                    st.write("이미지 없음")
+                try:
+                    if img_path and Path(img_path).exists():
+                        st.image(img_path, use_container_width=True)
+                    elif result["image_url"]:
+                        st.image(result["image_url"], use_container_width=True)
+                    else:
+                        st.markdown("이미지 없음")
+                except Exception:
+                    st.markdown("이미지 로드 실패")
 
-                st.markdown(f"**{result['title'] or '제목 없음'}**")
-                st.markdown(f"카테고리: {result['product_type']}")
-                st.markdown(f"유사도: **{result['score']*100:.1f}%**")
+                # 카드 정보
+                title = clean_title(result['title'], result['caption'])
+                category_label = CATEGORY_LABELS.get(result['product_type'], result['product_type'])
+                st.markdown(f"<div class='card-title'>{title}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='card-meta'>📦 {category_label}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='card-score'>유사도 {result['score']*100:.1f}%</div>", unsafe_allow_html=True)
+
+elif not query:
+    st.info("검색어를 입력하고 검색하기 버튼을 눌러주세요.")
