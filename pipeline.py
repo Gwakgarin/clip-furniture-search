@@ -27,11 +27,11 @@ else:
 BASE_URL = "https://amazon-berkeley-objects.s3.us-east-1.amazonaws.com"
 PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
-LISTINGS_DIR = DATA_DIR / "listings"
-IMAGES_DIR = DATA_DIR / "images"
+LISTINGS_DIR = DATA_DIR / "abo-listings" / "listings"
+IMAGES_DIR = DATA_DIR / "abo-images"
 IMAGES_CLEAN_DIR = DATA_DIR / "images_clean"
 
-IMAGE_METADATA_DIR = DATA_DIR / "image_metadata"
+IMAGE_METADATA_DIR = DATA_DIR / "abo-images" / "metadata"
 FURNITURE_PRODUCTS_FILE = LISTINGS_DIR / "furniture_products.jsonl"
 FURNITURE_IMAGES_FILE = DATA_DIR / "furniture_captions.csv"
 EVAL_QUERIES_FILE = DATA_DIR / "eval_queries.csv"
@@ -73,7 +73,6 @@ def download_metadata():
         url = f"{BASE_URL}/listings/metadata/{filename}"
         output_path = LISTINGS_DIR / filename
         
-        # 이미 존재하는 파일은 스킵
         if output_path.exists():
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
             print(f"⊘ 이미 존재: {filename} ({file_size_mb:.1f} MB)")
@@ -103,7 +102,6 @@ def extract_metadata():
     for gz_file in gz_files:
         json_file = gz_file.with_suffix('')
         
-        # 이미 추출된 파일은 스킵
         if json_file.exists():
             file_size_mb = json_file.stat().st_size / (1024 * 1024)
             print(f"⊘ 이미 추출됨: {json_file.name} ({file_size_mb:.1f} MB)")
@@ -138,7 +136,6 @@ def verify_data():
     if json_files:
         print("\n샘플 데이터 확인:")
         with open(json_files[0], 'r', encoding='utf-8') as f:
-            # 첫 3줄만 확인
             for i, line in enumerate(f):
                 if i >= 3:
                     break
@@ -176,7 +173,6 @@ def filter_furniture_products():
                         data = json.loads(line)
                         total_count += 1
                         
-                        # product_type은 리스트이므로 첫 번째 항목에서 value를 추출
                         product_type_list = data.get('product_type', [])
                         if product_type_list and isinstance(product_type_list, list):
                             product_type = product_type_list[0].get('value', '').upper()
@@ -359,18 +355,9 @@ def download_furniture_images(max_images=5000):
 
     with open(FURNITURE_IMAGES_FILE, 'w', encoding='utf-8', newline='') as manifest_f:
         fieldnames = [
-            "item_id",
-            "image_id",
-            "image_path",
-            "abo_image_path",
-            "image_url",
-            "product_type",
-            "title",
-            "brand",
-            "material",
-            "color",
-            "style",
-            "caption",
+            "item_id", "image_id", "image_path", "abo_image_path",
+            "image_url", "product_type", "title", "brand",
+            "material", "color", "style", "caption",
         ]
         writer = csv.DictWriter(manifest_f, fieldnames=fieldnames)
         writer.writeheader()
@@ -441,18 +428,9 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
         return False
 
     fieldnames = [
-        "item_id",
-        "image_id",
-        "image_path",
-        "abo_image_path",
-        "image_url",
-        "product_type",
-        "title",
-        "brand",
-        "material",
-        "color",
-        "style",
-        "caption",
+        "item_id", "image_id", "image_path", "abo_image_path",
+        "image_url", "product_type", "title", "brand",
+        "material", "color", "style", "caption",
     ]
 
     category_counts = Counter()
@@ -508,25 +486,103 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
 
     return written_count > 0
 
+def generate_embeddings():
+    """CLIP 이미지 임베딩을 생성합니다."""
+    import torch
+    import open_clip
+    import numpy as np
+    from PIL import Image
+
+    print("\n" + "="*60)
+    print("CLIP 이미지 임베딩 생성")
+    print("="*60)
+
+    if not FURNITURE_IMAGES_FILE.exists():
+        print(f"✗ {FURNITURE_IMAGES_FILE.name} 파일이 없습니다. 먼저 --step caption을 실행하세요.")
+        return False
+
+    # 디바이스 설정
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"사용 디바이스: {device}")
+
+    # CLIP 모델 로드
+    print("CLIP 모델 로딩 중...")
+    model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
+    model = model.to(device).eval()
+    print("✓ 모델 로딩 완료")
+
+    # CSV에서 이미지 경로 읽기
+    rows = []
+    with open(FURNITURE_IMAGES_FILE, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    print(f"총 이미지 수: {len(rows):,}장")
+
+    embeddings = []
+    valid_rows = []
+    failed = 0
+
+    for row in tqdm(rows, desc="임베딩 생성 중"):
+        img_path = row.get('image_path', '')
+        if not img_path or not Path(img_path).exists():
+            failed += 1
+            continue
+
+        try:
+            img = preprocess(Image.open(img_path).convert('RGB'))
+            img = img.unsqueeze(0).to(device)
+            with torch.no_grad():
+                emb = model.encode_image(img)
+                emb = emb / emb.norm(dim=-1, keepdim=True)
+            embeddings.append(emb.cpu().numpy()[0])
+            valid_rows.append(row)
+        except Exception:
+            failed += 1
+            continue
+
+    if not embeddings:
+        print("✗ 임베딩 생성 실패: 유효한 이미지가 없습니다.")
+        return False
+
+    import numpy as np
+    embeddings_array = np.array(embeddings)
+    np.save(IMAGE_EMBEDDINGS_FILE, embeddings_array)
+    print(f"\n✓ 임베딩 저장 완료: {IMAGE_EMBEDDINGS_FILE.name}")
+    print(f"  - shape: {embeddings_array.shape}")
+
+    # valid_ids.csv 저장
+    with open(VALID_IDS_FILE, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=valid_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(valid_rows)
+    print(f"✓ valid_ids 저장 완료: {VALID_IDS_FILE.name} ({len(valid_rows):,}개)")
+    print(f"  - 실패/스킵: {failed:,}장")
+
+    return True
+
 def main():
     parser = argparse.ArgumentParser(
         description="ABO Dataset Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예제:
-  python pipeline.py --step download    # 데이터 다운로드
-  python pipeline.py --step extract     # 압축 파일 추출
-  python pipeline.py --step filter      # 가구 제품 필터링
-  python pipeline.py --step caption     # 메타데이터 기반 자연어 캡션 CSV 생성
-  python pipeline.py --step images      # 필터링된 가구 대표 이미지 다운로드
-  python pipeline.py --step verify      # 데이터 검증
-  python pipeline.py --step all         # 모든 단계 실행
+  python pipeline.py --step download       # 메타데이터 다운로드
+  python pipeline.py --step extract        # 압축 파일 추출
+  python pipeline.py --step filter         # 가구 제품 필터링
+  python pipeline.py --step image-metadata # 이미지 메타데이터 다운로드
+  python pipeline.py --step images         # 가구 이미지 다운로드
+  python pipeline.py --step caption        # 자연어 캡션 CSV 생성
+  python pipeline.py --step embed          # CLIP 이미지 임베딩 생성
+  python pipeline.py --step verify         # 데이터 검증
+  python pipeline.py --step all            # 모든 단계 실행
         """
     )
     
     parser.add_argument(
         '--step',
-        choices=['download', 'extract', 'filter', 'image-metadata', 'caption', 'images', 'verify', 'all'],
+        choices=['download', 'extract', 'filter', 'image-metadata', 'caption', 'images', 'embed', 'verify', 'all'],
         default='all',
         help='실행할 단계 선택 (기본값: all)'
     )
@@ -534,7 +590,7 @@ def main():
         '--max-images',
         type=int,
         default=5000,
-        help='--step images에서 다운로드할 최대 이미지 수 (기본값: 5000)'
+        help='최대 이미지 수 (기본값: 5000)'
     )
     
     args = parser.parse_args()
@@ -560,6 +616,9 @@ def main():
 
     if args.step in ['images']:
         success = success and download_furniture_images(max_images=args.max_images)
+
+    if args.step in ['embed']:
+        success = success and generate_embeddings()
     
     if args.step in ['verify', 'all']:
         success = success and verify_data()
