@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Pipeline script for downloading and processing ABO (Amazon Berkeley Objects) dataset
-"""
+# ABO 데이터셋 처리 파이프라인
 
 import os
 import argparse
@@ -15,7 +13,7 @@ import ssl
 from collections import Counter
 from tqdm import tqdm
 
-# SSL 인증서 검증 무시 (macOS Python 3.14 문제 해결)
+# SSL 인증서 검증 무시(필요한 경우)
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -45,21 +43,21 @@ FURNITURE_CATEGORIES = {
     'SHELF', 'OTTOMAN', 'BENCH', 'NIGHTSTAND', 'DRESSER'
 }
 
+# 파일 다운로드
 def download_file(url, output_path):
-    """URL에서 파일을 다운로드합니다."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     print(f"Downloading: {url}")
     try:
         urllib.request.urlretrieve(url, output_path)
-        print(f"✓ Downloaded: {output_path}")
+        print(f" Downloaded: {output_path}")
         return True
     except Exception as e:
-        print(f"✗ Failed to download: {e}")
+        print(f"[실패] Failed to download: {e}")
         return False
 
+# 메타데이터 다운로드
 def download_metadata():
-    """메타데이터 파일들을 다운로드합니다."""
     LISTINGS_DIR.mkdir(parents=True, exist_ok=True)
     
     print("\n" + "="*60)
@@ -75,7 +73,7 @@ def download_metadata():
         
         if output_path.exists():
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            print(f"⊘ 이미 존재: {filename} ({file_size_mb:.1f} MB)")
+            print(f"이미 존재: {filename} ({file_size_mb:.1f} MB)")
             success_count += 1
             continue
         
@@ -84,11 +82,11 @@ def download_metadata():
             print(f"  파일 크기: {file_size_mb:.1f} MB")
             success_count += 1
     
-    print(f"\n✓ 다운로드 완료: {success_count}/{len(LISTING_SHARDS)} 파일")
+    print(f"\n 다운로드 완료: {success_count}/{len(LISTING_SHARDS)} 파일")
     return success_count == len(LISTING_SHARDS)
 
+# 압축 메타데이터 추출
 def extract_metadata():
-    """압축된 메타데이터를 추출합니다."""
     print("\n" + "="*60)
     print("메타데이터 추출 시작")
     print("="*60)
@@ -96,7 +94,7 @@ def extract_metadata():
     gz_files = sorted(LISTINGS_DIR.glob("listings_*.json.gz"))
     
     if not gz_files:
-        print("✗ 압축된 파일을 찾을 수 없습니다.")
+        print("[실패] 압축된 파일을 찾을 수 없습니다.")
         return False
     
     for gz_file in gz_files:
@@ -104,7 +102,7 @@ def extract_metadata():
         
         if json_file.exists():
             file_size_mb = json_file.stat().st_size / (1024 * 1024)
-            print(f"⊘ 이미 추출됨: {json_file.name} ({file_size_mb:.1f} MB)")
+            print(f"이미 추출됨: {json_file.name} ({file_size_mb:.1f} MB)")
             continue
         
         print(f"Extracting: {gz_file.name}")
@@ -113,16 +111,16 @@ def extract_metadata():
                 with open(json_file, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
             file_size_mb = json_file.stat().st_size / (1024 * 1024)
-            print(f"✓ 추출 완료: {json_file.name} ({file_size_mb:.1f} MB)")
+            print(f"추출 완료: {json_file.name} ({file_size_mb:.1f} MB)")
         except Exception as e:
-            print(f"✗ 추출 실패: {e}")
+            print(f"[실패] 추출 실패: {e}")
             return False
     
-    print("\n✓ 모든 파일 추출 완료")
+    print("\n모든 파일 추출 완료")
     return True
 
+# 데이터 검증
 def verify_data():
-    """다운로드된 데이터를 검증합니다."""
     print("\n" + "="*60)
     print("데이터 검증")
     print("="*60)
@@ -149,8 +147,8 @@ def verify_data():
     
     return len(json_files) > 0
 
+# 가구 제품 필터링
 def filter_furniture_products():
-    """가구 제품만 필터링합니다."""
     print("\n" + "="*60)
     print("가구 제품 필터링 시작")
     print("="*60)
@@ -186,20 +184,20 @@ def filter_furniture_products():
                     except Exception:
                         continue
     
-    print(f"\n✓ 필터링 완료")
+    print(f"\n 필터링 완료")
     print(f"  - 전체 제품: {total_count:,}개")
     print(f"  - 가구 제품: {furniture_count:,}개")
     print(f"  - 필터링 비율: {furniture_count/max(total_count, 1)*100:.2f}%")
     
     if furniture_count > 0:
-        print(f"✓ {FURNITURE_PRODUCTS_FILE.name}에 저장됨")
+        print(f"{FURNITURE_PRODUCTS_FILE.name}에 저장됨")
         return True
     else:
-        print("✗ 필터링된 제품이 없습니다.")
+        print("[실패] 필터링된 제품이 없습니다.")
         return False
 
+# 이미지 메타데이터 다운로드
 def download_image_metadata():
-    """ABO 이미지 메타데이터를 다운로드합니다."""
     print("\n" + "="*60)
     print("이미지 메타데이터 다운로드")
     print("="*60)
@@ -209,20 +207,20 @@ def download_image_metadata():
 
     if output_path.exists():
         file_size_mb = output_path.stat().st_size / (1024 * 1024)
-        print(f"⊘ 이미 존재: {output_path.name} ({file_size_mb:.1f} MB)")
+        print(f"이미 존재: {output_path.name} ({file_size_mb:.1f} MB)")
         return True
 
     return download_file(url, output_path)
 
+# product_type 추출
 def get_product_type(data):
-    """상품 데이터에서 product_type 값을 추출합니다."""
     product_type_list = data.get('product_type', [])
     if product_type_list and isinstance(product_type_list, list):
         return product_type_list[0].get('value', '').upper()
     return ''
 
+# 다국어 텍스트 선택
 def get_text_value(values, preferred_languages=('ko_KR', 'en_US', 'en_GB')):
-    """다국어 리스트 필드에서 화면 표시용 텍스트를 고릅니다."""
     if not values or not isinstance(values, list):
         return ''
 
@@ -237,18 +235,18 @@ def get_text_value(values, preferred_languages=('ko_KR', 'en_US', 'en_GB')):
 
     return ''
 
+# 텍스트 공백 정리
 def normalize_text(text):
-    """CSV caption에 넣기 좋게 공백과 쉼표를 정리합니다."""
     if not text:
         return ''
     return ' '.join(str(text).replace('\n', ' ').replace('\r', ' ').split()).strip(' ,')
 
+# 영어 우선 텍스트 선택
 def get_english_text_value(values):
-    """CLIP 검색용 캡션에 사용할 영어 우선 텍스트를 고릅니다."""
     return normalize_text(get_text_value(values, preferred_languages=('en_US', 'en_GB', 'ko_KR')))
 
+# 자연어 캡션 생성
 def build_caption(product):
-    """상품 메타데이터를 자연어 캡션 한 문장으로 변환합니다."""
     title = get_english_text_value(product.get("item_name"))
     brand = get_english_text_value(product.get("brand"))
     material = get_english_text_value(product.get("material"))
@@ -274,10 +272,10 @@ def build_caption(product):
 
     return ", ".join(parts)
 
+# 대표 이미지가 있는 가구 상품 로드
 def load_furniture_products(max_images):
-    """대표 이미지가 있는 가구 상품을 고유 image_id 기준으로 읽습니다."""
     if not FURNITURE_PRODUCTS_FILE.exists():
-        print(f"✗ {FURNITURE_PRODUCTS_FILE.name} 파일이 없습니다. 먼저 --step filter를 실행하세요.")
+        print(f"[실패] {FURNITURE_PRODUCTS_FILE.name} 파일이 없습니다. 먼저 --step filter를 실행하세요.")
         return []
 
     products = []
@@ -302,11 +300,11 @@ def load_furniture_products(max_images):
 
     return products
 
+# image_id별 이미지 경로 로드
 def load_image_paths(target_image_ids):
-    """images.csv.gz에서 필요한 image_id의 S3 상대 경로만 로드합니다."""
     metadata_path = IMAGE_METADATA_DIR / "images.csv.gz"
     if not metadata_path.exists():
-        print(f"✗ {metadata_path.name} 파일이 없습니다. 먼저 이미지 메타데이터를 다운로드하세요.")
+        print(f"[실패] {metadata_path.name} 파일이 없습니다. 먼저 이미지 메타데이터를 다운로드하세요.")
         return {}
 
     image_paths = {}
@@ -321,8 +319,8 @@ def load_image_paths(target_image_ids):
 
     return image_paths
 
+# 가구 대표 이미지 다운로드
 def download_furniture_images(max_images=5000):
-    """필터링된 가구 상품의 대표 이미지만 선택 다운로드합니다."""
     print("\n" + "="*60)
     print("필터링된 가구 이미지 다운로드")
     print("="*60)
@@ -339,7 +337,7 @@ def download_furniture_images(max_images=5000):
     image_paths = load_image_paths(target_image_ids)
 
     if not image_paths:
-        print("✗ 다운로드할 이미지 경로를 찾지 못했습니다.")
+        print("[실패] 다운로드할 이미지 경로를 찾지 못했습니다.")
         return False
 
     print(f"가구 상품 수: {len(products):,}개")
@@ -402,7 +400,7 @@ def download_furniture_images(max_images=5000):
             writer.writerow(record)
             manifest_count += 1
 
-    print("\n✓ 이미지 다운로드 단계 완료")
+    print("\n 이미지 다운로드 단계 완료")
     print(f"  - 새로 다운로드: {downloaded_count:,}장")
     print(f"  - 이미 있어서 스킵: {skipped_count:,}장")
     print(f"  - 실패/매핑 없음: {failed_count:,}장")
@@ -410,8 +408,8 @@ def download_furniture_images(max_images=5000):
 
     return manifest_count > 0
 
+# 가구 캡션 CSV 생성
 def generate_furniture_captions(max_items=5000, sample_count=5):
-    """가구 상품 메타데이터를 자연어 캡션 CSV로 변환합니다."""
     print("\n" + "="*60)
     print("자연어 캡션 생성")
     print("="*60)
@@ -424,7 +422,7 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
     target_image_ids = {product.get('main_image_id') for product in products if product.get('main_image_id')}
     image_paths = load_image_paths(target_image_ids)
     if not image_paths:
-        print("✗ 이미지 메타데이터 매핑이 없습니다. 먼저 --step image-metadata를 실행하세요.")
+        print("[실패] 이미지 메타데이터 매핑이 없습니다. 먼저 --step image-metadata를 실행하세요.")
         return False
 
     fieldnames = [
@@ -474,7 +472,7 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
             if len(sample_captions) < sample_count:
                 sample_captions.append(caption)
 
-    print(f"\n✓ {FURNITURE_IMAGES_FILE.name} 저장 완료: {written_count:,}개")
+    print(f"\n{FURNITURE_IMAGES_FILE.name} 저장 완료: {written_count:,}개")
 
     print("\n카테고리 분포:")
     for category, count in category_counts.most_common():
@@ -486,8 +484,8 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
 
     return written_count > 0
 
+# CLIP 이미지 임베딩 생성
 def generate_embeddings():
-    """CLIP 이미지 임베딩을 생성합니다."""
     import torch
     import open_clip
     import numpy as np
@@ -498,7 +496,7 @@ def generate_embeddings():
     print("="*60)
 
     if not FURNITURE_IMAGES_FILE.exists():
-        print(f"✗ {FURNITURE_IMAGES_FILE.name} 파일이 없습니다. 먼저 --step caption을 실행하세요.")
+        print(f"[실패] {FURNITURE_IMAGES_FILE.name} 파일이 없습니다. 먼저 --step caption을 실행하세요.")
         return False
 
     # 디바이스 설정
@@ -509,7 +507,7 @@ def generate_embeddings():
     print("CLIP 모델 로딩 중...")
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
     model = model.to(device).eval()
-    print("✓ 모델 로딩 완료")
+    print("모델 로딩 완료")
 
     # CSV에서 이미지 경로 읽기
     rows = []
@@ -543,13 +541,13 @@ def generate_embeddings():
             continue
 
     if not embeddings:
-        print("✗ 임베딩 생성 실패: 유효한 이미지가 없습니다.")
+        print("[실패] 임베딩 생성 실패: 유효한 이미지가 없습니다.")
         return False
 
     import numpy as np
     embeddings_array = np.array(embeddings)
     np.save(IMAGE_EMBEDDINGS_FILE, embeddings_array)
-    print(f"\n✓ 임베딩 저장 완료: {IMAGE_EMBEDDINGS_FILE.name}")
+    print(f"\n 임베딩 저장 완료: {IMAGE_EMBEDDINGS_FILE.name}")
     print(f"  - shape: {embeddings_array.shape}")
 
     # valid_ids.csv 저장
@@ -557,7 +555,7 @@ def generate_embeddings():
         writer = csv.DictWriter(f, fieldnames=valid_rows[0].keys())
         writer.writeheader()
         writer.writerows(valid_rows)
-    print(f"✓ valid_ids 저장 완료: {VALID_IDS_FILE.name} ({len(valid_rows):,}개)")
+    print(f"valid_ids 저장 완료: {VALID_IDS_FILE.name} ({len(valid_rows):,}개)")
     print(f"  - 실패/스킵: {failed:,}장")
 
     return True
@@ -625,11 +623,11 @@ def main():
     
     if success:
         print("\n" + "="*60)
-        print("✓ 모든 작업이 완료되었습니다!")
+        print("모든 작업이 완료되었습니다!")
         print("="*60)
     else:
         print("\n" + "="*60)
-        print("✗ 일부 작업에서 오류가 발생했습니다.")
+        print("일부 작업에서 오류가 발생했습니다.")
         print("="*60)
     
     return 0 if success else 1
