@@ -15,9 +15,8 @@ VALID_IDS_FILE = DATA_DIR / "valid_ids.csv"
 
 # 카테고리 설정 
 FURNITURE_CATEGORIES = [
-    "SOFA", "CHAIR", "TABLE", "BED", "DESK", "WARDROBE",
-    "BOOKCASE", "CABINET", "DINING_TABLE", "COFFEE_TABLE",
-    "SHELF", "OTTOMAN", "BENCH", "NIGHTSTAND", "DRESSER",
+    "SOFA", "CHAIR", "TABLE", "BED", "DESK",
+    "CABINET", "SHELF", "OTTOMAN", "BENCH", "DRESSER",
 ]
 
 CATEGORY_LABELS = {
@@ -27,15 +26,10 @@ CATEGORY_LABELS = {
     "TABLE": "테이블",
     "BED": "침대",
     "DESK": "책상",
-    "WARDROBE": "옷장",
-    "BOOKCASE": "책장",
     "CABINET": "수납장",
-    "DINING_TABLE": "식탁",
-    "COFFEE_TABLE": "커피 테이블",
     "SHELF": "선반",
     "OTTOMAN": "오토만",
     "BENCH": "벤치",
-    "NIGHTSTAND": "협탁",
     "DRESSER": "서랍장",
 }
 
