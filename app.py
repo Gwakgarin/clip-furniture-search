@@ -10,8 +10,6 @@ import streamlit as st
 from deep_translator import GoogleTranslator
 from lora_utils import DEFAULT_LORA_WEIGHTS, load_lora 
 
-from lora_utils import DEFAULT_LORA_WEIGHTS, require_lora
-
 #  경로 설정 
 DATA_DIR = Path(__file__).parent / "data"
 IMAGE_EMBEDDINGS_FILE = DATA_DIR / "image_embeddings.npy"
@@ -84,7 +82,6 @@ st.markdown("""
 def load_model():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
-    require_lora(model, DEFAULT_LORA_WEIGHTS, map_location="cpu")
     tokenizer = open_clip.get_tokenizer('ViT-B-32')
     # LoRA 가중치 적용 
     lora_loaded = load_lora(model, DEFAULT_LORA_WEIGHTS, map_location="cpu")
