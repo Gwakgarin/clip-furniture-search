@@ -230,6 +230,8 @@ data/furniture_captions.csv
 data/eval_queries.csv
 data/image_embeddings.npy
 data/valid_ids.csv
+lora_weights/
+furniture_lora_data.zip
 clip_furniture_search/data/
 *.jsonl
 *.tar

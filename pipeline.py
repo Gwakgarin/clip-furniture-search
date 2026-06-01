@@ -13,6 +13,8 @@ import ssl
 from collections import Counter
 from tqdm import tqdm
 
+from lora_utils import DEFAULT_LORA_WEIGHTS, require_lora
+
 # SSL 인증서 검증 무시(필요한 경우)
 try:
     _create_unverified_https_context = ssl._create_unverified_context
@@ -42,6 +44,29 @@ FURNITURE_CATEGORIES = {
     'BOOKCASE', 'CABINET', 'DINING_TABLE', 'COFFEE_TABLE',
     'SHELF', 'OTTOMAN', 'BENCH', 'NIGHTSTAND', 'DRESSER'
 }
+
+def to_project_relative(path):
+    try:
+        return str(path.relative_to(PROJECT_DIR))
+    except ValueError:
+        return str(path)
+
+def resolve_image_path(row):
+    candidates = []
+    image_path = row.get("image_path", "")
+    abo_image_path = row.get("abo_image_path", "")
+
+    if image_path:
+        candidates.append(Path(image_path))
+        candidates.append(PROJECT_DIR / image_path)
+    if abo_image_path:
+        candidates.append(DATA_DIR / "abo-images" / abo_image_path)
+        candidates.append(DATA_DIR / "images" / abo_image_path)
+
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
 
 # 파일 다운로드
 def download_file(url, output_path):
@@ -258,19 +283,26 @@ def build_caption(product):
     if brand and title and brand.lower() not in title.lower():
         title = f"{brand} {title}"
 
-    parts = []
-    if title:
-        parts.append(title)
-    if material:
-        parts.append(f"{material} material")
-    if color:
-        parts.append(f"{color} color")
+    attributes = []
     if style:
-        parts.append(f"{style} style")
-    if category:
-        parts.append(category)
+        attributes.append(style)
+    if color:
+        attributes.append(color)
+    if material:
+        attributes.append(material)
 
-    return ", ".join(parts)
+    description = " ".join(attributes + ([category] if category else []))
+    if description:
+        caption = f"A product photo of a {description}."
+    elif title:
+        caption = f"A product photo of {title}."
+    else:
+        return ""
+
+    if title:
+        caption = f"{caption} The product title is {title}."
+
+    return caption
 
 # 대표 이미지가 있는 가구 상품 로드
 def load_furniture_products(max_images):
@@ -320,11 +352,14 @@ def load_image_paths(target_image_ids):
     return image_paths
 
 # 가구 대표 이미지 다운로드
-def download_furniture_images(max_images=5000):
+def format_limit(max_items):
+    return "전체" if not max_items else f"최대 {max_items:,}"
+
+def download_furniture_images(max_images=0):
     print("\n" + "="*60)
     print("필터링된 가구 이미지 다운로드")
     print("="*60)
-    print(f"목표 이미지 수: 최대 {max_images:,}장")
+    print(f"목표 이미지 수: {format_limit(max_images)}장")
 
     if not download_image_metadata():
         return False
@@ -386,7 +421,7 @@ def download_furniture_images(max_images=5000):
             record = {
                 "item_id": product.get("item_id"),
                 "image_id": image_id,
-                "image_path": str(local_path),
+                "image_path": to_project_relative(local_path),
                 "abo_image_path": image_path,
                 "image_url": f"{BASE_URL}/images/small/{image_path}",
                 "product_type": get_product_type(product),
@@ -409,11 +444,11 @@ def download_furniture_images(max_images=5000):
     return manifest_count > 0
 
 # 가구 캡션 CSV 생성
-def generate_furniture_captions(max_items=5000, sample_count=5):
+def generate_furniture_captions(max_items=0, sample_count=5):
     print("\n" + "="*60)
     print("자연어 캡션 생성")
     print("="*60)
-    print(f"목표 캡션 수: 최대 {max_items:,}개")
+    print(f"목표 캡션 수: {format_limit(max_items)}개")
 
     products = load_furniture_products(max_images=max_items)
     if not products:
@@ -454,7 +489,7 @@ def generate_furniture_captions(max_items=5000, sample_count=5):
             record = {
                 "item_id": product.get("item_id"),
                 "image_id": image_id,
-                "image_path": str(local_path),
+                "image_path": to_project_relative(local_path),
                 "abo_image_path": abo_image_path,
                 "image_url": f"{BASE_URL}/images/small/{abo_image_path}",
                 "product_type": product_type,
@@ -506,6 +541,8 @@ def generate_embeddings():
     # CLIP 모델 로드
     print("CLIP 모델 로딩 중...")
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
+    require_lora(model, DEFAULT_LORA_WEIGHTS, map_location="cpu")
+    print(f"LoRA 가중치 로드: {DEFAULT_LORA_WEIGHTS}")
     model = model.to(device).eval()
     print("모델 로딩 완료")
 
@@ -523,8 +560,8 @@ def generate_embeddings():
     failed = 0
 
     for row in tqdm(rows, desc="임베딩 생성 중"):
-        img_path = row.get('image_path', '')
-        if not img_path or not Path(img_path).exists():
+        img_path = resolve_image_path(row)
+        if not img_path:
             failed += 1
             continue
 
@@ -587,8 +624,8 @@ def main():
     parser.add_argument(
         '--max-images',
         type=int,
-        default=5000,
-        help='최대 이미지 수 (기본값: 5000)'
+        default=0,
+        help='최대 이미지 수 (기본값: 0, 전체 사용)'
     )
     
     args = parser.parse_args()
