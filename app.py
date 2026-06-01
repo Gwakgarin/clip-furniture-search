@@ -104,7 +104,7 @@ def translate_to_english(query: str) -> str:
     except Exception:
         return query
 
-#  제목 정리 함수 
+# 제목 정리 함수 
 def clean_title(title: str, caption: str) -> str:
     if not title:
         return caption or "제목 없음"
