@@ -3,10 +3,12 @@ import csv
 import numpy as np
 import torch
 import open_clip
+import faiss
 from pathlib import Path
 from PIL import Image
 import streamlit as st
 from deep_translator import GoogleTranslator
+from lora_utils import DEFAULT_LORA_WEIGHTS, load_lora 
 
 from lora_utils import DEFAULT_LORA_WEIGHTS, require_lora
 
@@ -14,6 +16,7 @@ from lora_utils import DEFAULT_LORA_WEIGHTS, require_lora
 DATA_DIR = Path(__file__).parent / "data"
 IMAGE_EMBEDDINGS_FILE = DATA_DIR / "image_embeddings.npy"
 VALID_IDS_FILE = DATA_DIR / "valid_ids.csv"
+FAISS_INDEX_FILE = DATA_DIR / "faiss_index.bin" 
 
 # 카테고리 설정 
 FURNITURE_CATEGORIES = [
@@ -83,18 +86,33 @@ def load_model():
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
     require_lora(model, DEFAULT_LORA_WEIGHTS, map_location="cpu")
     tokenizer = open_clip.get_tokenizer('ViT-B-32')
+    # LoRA 가중치 적용 
+    lora_loaded = load_lora(model, DEFAULT_LORA_WEIGHTS, map_location="cpu")
+    if lora_loaded:
+        print(f"LoRA 가중치 로드 완료: {DEFAULT_LORA_WEIGHTS}")
+    else:
+        print("LoRA 가중치 없음 → Zero-shot CLIP으로 동작")
     model = model.to(device).eval()
     return model, preprocess, tokenizer, device
 
 @st.cache_resource
 def load_embeddings():
-    embeddings = np.load(str(IMAGE_EMBEDDINGS_FILE))
+    embeddings = np.load(str(IMAGE_EMBEDDINGS_FILE)).astype(np.float32)
     rows = []
     with open(VALID_IDS_FILE, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             rows.append(row)
-    return embeddings, rows
+
+    # FAISS 인덱스 로드
+    if FAISS_INDEX_FILE.exists():
+        index = faiss.read_index(str(FAISS_INDEX_FILE))
+    else:
+        index = faiss.IndexFlatIP(embeddings.shape[1])
+        index.add(embeddings)
+        faiss.write_index(index, str(FAISS_INDEX_FILE))
+
+    return embeddings, rows, index
 
 # 번역 함수 
 def translate_to_english(query: str) -> str:
@@ -111,43 +129,48 @@ def translate_to_english(query: str) -> str:
 def clean_title(title: str, caption: str) -> str:
     if not title:
         return caption or "제목 없음"
-    # 전체 문자 중 절반 이상이 깨진 문자면 caption으로 대체
     broken = sum(1 for c in title if ord(c) > 0x3000 and not '\uAC00' <= c <= '\uD7A3')
     if len(title) > 0 and broken / len(title) > 0.3:
         return caption or "제목 없음"
     return title
 
-# 검색 함수 
-def search(query_en: str, embeddings, rows, model, tokenizer, device,
+# FAISS 검색 함수
+def search(query_en: str, embeddings, rows, index, model, tokenizer, device,
            top_k: int = 5, category_filter: str = None):
     tokens = tokenizer([query_en]).to(device)
     with torch.no_grad():
         text_emb = model.encode_text(tokens)
         text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
-    text_emb = text_emb.cpu().numpy()[0]
-
-    sims = embeddings @ text_emb
+    text_emb = text_emb.cpu().numpy().astype(np.float32)
 
     if category_filter and category_filter != "전체":
-        indices = [
+        filtered_indices = [
             i for i, row in enumerate(rows)
             if row.get('product_type', '').upper() == category_filter
         ]
+        if not filtered_indices:
+            return []
+        sub_emb = embeddings[filtered_indices].astype(np.float32)
+        sub_index = faiss.IndexFlatIP(sub_emb.shape[1])
+        sub_index.add(sub_emb)
+        scores, sub_ids = sub_index.search(text_emb, min(top_k, len(filtered_indices)))
+        final_indices = [filtered_indices[i] for i in sub_ids[0] if i >= 0]
+        final_scores = scores[0]
     else:
-        indices = list(range(len(rows)))
-
-    indices_sorted = sorted(indices, key=lambda i: sims[i], reverse=True)[:top_k]
+        scores, ids = index.search(text_emb, top_k)
+        final_indices = [i for i in ids[0] if i >= 0]
+        final_scores = scores[0]
 
     results = []
-    for idx in indices_sorted:
+    for rank, idx in enumerate(final_indices):
         row = rows[idx]
         results.append({
-            "image_path": row.get("image_path", ""),
+            "abo_image_path": row.get("abo_image_path", ""),  
             "image_url": row.get("image_url", ""),
             "title": row.get("title", ""),
             "product_type": row.get("product_type", ""),
             "caption": row.get("caption", ""),
-            "score": float(sims[idx]),
+            "score": float(final_scores[rank]),
         })
     return results
 
@@ -161,7 +184,7 @@ st.set_page_config(page_title="CLIP 가구 이미지 검색", layout="wide")
 # 모델 & 데이터 로드 
 with st.spinner("모델 및 임베딩 데이터 로딩 중..."):
     model, preprocess, tokenizer, device = load_model()
-    embeddings, rows = load_embeddings()
+    embeddings, rows, faiss_index = load_embeddings()  
 
 # 사이드바 
 with st.sidebar:
@@ -174,10 +197,15 @@ with st.sidebar:
     )
     st.divider()
     st.caption(f"검색 가능 이미지: {len(rows):,}장")
+    st.caption("검색 엔진: FAISS IndexFlatIP")
+    
+    # LoRA 적용 여부 표시
+    lora_path = DEFAULT_LORA_WEIGHTS
+    st.caption(f"LoRA: {'적용됨' if lora_path.exists() else '미적용 (Zero-shot)'}")
 
 # 헤더 
 st.title("🪑 CLIP 가구 이미지 검색")
-st.caption("한글 자연어로 원하는 가구를 검색하세요. 자동으로 영어로 번역 후 의미 기반 검색을 수행합니다.")
+st.caption("한글 자연어로 원하는 가구를 검색하세요.")
 
 # 검색창 
 if "query" not in st.session_state:
@@ -205,21 +233,24 @@ st.divider()
 # 검색 실행 
 if search_btn and query:
     with st.spinner("검색 중..."):
+        start = time.time()
         query_en = translate_to_english(query)
         category_filter = None if category == "전체" else category
         results = search(
-            query_en, embeddings, rows, model, tokenizer, device,
+            query_en, embeddings, rows, faiss_index, model, tokenizer, device,
             top_k=top_k, category_filter=category_filter
         )
+        elapsed = time.time() - start
 
     # 검색 정보 요약
-    info_col1, info_col2, info_col3 = st.columns(3)
+    info_col1, info_col2, info_col3, info_col4 = st.columns(4)
     info_col1.info(f"🔍 **{query}**  →  {query_en}")
     if results:
         top_score = results[0]['score'] * 100
         avg_score = sum(r['score'] for r in results) / len(results) * 100
         info_col2.metric("최고 유사도", f"{top_score:.1f}%")
         info_col3.metric("평균 유사도", f"{avg_score:.1f}%")
+        info_col4.metric("응답 시간", f"{elapsed:.3f}초") 
 
     st.subheader(f"검색 결과 Top-{top_k}")
 
@@ -229,8 +260,7 @@ if search_btn and query:
         cols = st.columns(4)
         for idx, result in enumerate(results):
             with cols[idx % 4]:
-                # 이미지
-                img_path = result["image_path"]
+                img_path = str(DATA_DIR / "abo-images" / result["abo_image_path"])
                 try:
                     if img_path and Path(img_path).exists():
                         st.image(img_path, use_container_width=True)
@@ -241,7 +271,7 @@ if search_btn and query:
                 except Exception:
                     st.markdown("이미지 로드 실패")
 
-                # 카드 정보
+                # 카드 정보 
                 title = clean_title(result['title'], result['caption'])
                 category_label = CATEGORY_LABELS.get(result['product_type'], result['product_type'])
                 st.markdown(f"<div class='card-title'>{title}</div>", unsafe_allow_html=True)
