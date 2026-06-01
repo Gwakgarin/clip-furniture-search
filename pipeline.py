@@ -272,16 +272,11 @@ def get_english_text_value(values):
 
 # 자연어 캡션 생성
 def build_caption(product):
-    title = get_english_text_value(product.get("item_name"))
-    brand = get_english_text_value(product.get("brand"))
     material = get_english_text_value(product.get("material"))
     color = get_english_text_value(product.get("color"))
     style = get_english_text_value(product.get("style"))
     product_type = get_product_type(product)
     category = product_type.lower().replace('_', ' ')
-
-    if brand and title and brand.lower() not in title.lower():
-        title = f"{brand} {title}"
 
     attributes = []
     if style:
@@ -293,16 +288,10 @@ def build_caption(product):
 
     description = " ".join(attributes + ([category] if category else []))
     if description:
-        caption = f"A product photo of a {description}."
-    elif title:
-        caption = f"A product photo of {title}."
-    else:
-        return ""
-
-    if title:
-        caption = f"{caption} The product title is {title}."
-
-    return caption
+        return f"A product photo of a {description}."
+    if category:
+        return f"A product photo of a {category}."
+    return ""
 
 # 대표 이미지가 있는 가구 상품 로드
 def load_furniture_products(max_images):
