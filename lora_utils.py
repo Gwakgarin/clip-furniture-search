@@ -6,7 +6,7 @@ from torch.nn import functional as F
 
 
 DEFAULT_LORA_WEIGHTS = Path(__file__).parent / "lora_weights" / "clip_lora.pt"
-DEFAULT_TARGET_MODULES = ("attn.out_proj", "mlp.c_fc", "mlp.c_proj")
+DEFAULT_TARGET_MODULES = ("mlp.c_fc", "mlp.c_proj")
 
 
 class LoRALinear(nn.Module):
@@ -23,6 +23,14 @@ class LoRALinear(nn.Module):
 
         for param in self.base_layer.parameters():
             param.requires_grad = False
+
+    @property
+    def weight(self):
+        return self.base_layer.weight
+
+    @property
+    def bias(self):
+        return self.base_layer.bias
 
     def forward(self, x):
         base = self.base_layer(x)
