@@ -218,6 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Local datasets and generated outputs
+.DS_Store
 data/abo-listings/
 data/abo-images/
 data/listings/*.json
