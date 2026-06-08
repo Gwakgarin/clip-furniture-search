@@ -1,56 +1,154 @@
 # CLIP Furniture Search
 
-CLIP 기반 가구 이미지 의미 검색 프로젝트입니다. ABO(Amazon Berkeley Objects) 데이터에서 가구 카테고리 이미지를 선별하고, 상품 메타데이터로 자연어 caption을 생성한 뒤 LoRA로 CLIP을 경량 fine-tuning하여 자연어 검색을 수행합니다.
+한글 자연어로 가구 이미지를 검색하는 시스템입니다.  
+ABO 데이터셋으로 CLIP을 LoRA 파인튜닝하고, FAISS 벡터 검색으로 빠르게 결과를 반환합니다.
 
-## 필수 다운로드 파일
 
-GitHub 용량 관리를 위해 학습 데이터, LoRA 가중치, 이미지 임베딩 파일은 Google Drive에 별도로 저장합니다.
+## 프로젝트 소개
+텍스트로 원하는 가구를 설명하면 가장 유사한 이미지를 찾아주는 멀티모달 검색 시스템입니다.  
+"따뜻한 원목 식탁", "미니멀한 흰색 책상"처럼 자유로운 한글 표현으로 검색할 수 있습니다.
 
-Google Drive 폴더 링크: [clip-furniture-search shared files](https://drive.google.com/drive/folders/1m5KZyj5QFVtuG_QL2pQzc-R7B82oTKG0?usp=drive_link)
+### 동작 방식
+한글 입력 → 영어 번역 → CLIP 텍스트 임베딩
+↓
+FAISS로 이미지 임베딩과 유사도 계산
+↓
+Top-K 이미지 반환
 
-아래 파일을 다운로드한 뒤 프로젝트 폴더의 지정 위치에 배치하세요.
+### 주요 기능
+- 한글 자연어 검색 (자동 번역 포함)
+- 카테고리 필터 (소파, 의자, 테이블, 침대 등 10종)
+- Top-K 결과 개수 조절
+- 유사도 점수 및 응답 시간 표시
 
-| 파일 | 저장 위치 | 용도 |
-|---|---|---|
-| `clip_lora.pt` | `lora_weights/clip_lora.pt` | LoRA fine-tuning 가중치 |
-| `image_embeddings.npy` | `data/image_embeddings.npy` | 검색 대상 이미지 임베딩 |
-| `valid_ids.csv` | `data/valid_ids.csv` | 임베딩과 이미지/상품 정보 매칭 |
-| `furniture_lora_data.zip` | 필요 시 임의 위치 | Colab에서 LoRA 재학습할 때 사용 |
+### 실행 화면
 
-권장 Google Drive 구성:
+> 아래 캡처는 로컬 실행 화면입니다.
 
-```text
-clip-furniture-search/
-  clip_lora.pt
-  image_embeddings.npy
-  valid_ids.csv
-  furniture_lora_data.zip
-```
+[검색 입력](https://private-user-images.githubusercontent.com/127281451/604167056-f57b5817-5a1f-4917-a900-1ac02eb2f544.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODA4OTAxNjQsIm5iZiI6MTc4MDg4OTg2NCwicGF0aCI6Ii8xMjcyODE0NTEvNjA0MTY3MDU2LWY1N2I1ODE3LTVhMWYtNDkxNy1hOTAwLTFhYzAyZWIyZjU0NC5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNjA4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDYwOFQwMzM3NDRaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT04NzA0NjA5NTk1NzA3ZGQ2M2JmZDkxNzA4YzBhMGVlMjBkMDVmYjM3NThmZjU1Nzk0MjgxMGJkNzExMWFkOWFhJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZwbmcifQ.0rNLhEKl9rwSC7CtzkXM2XvqpdJ7YfcZ3jpr8vXibH0)
+
+[검색 결과](https://private-user-images.githubusercontent.com/127281451/604167057-fe50b777-7e29-4846-bf11-96108d6cdc86.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODA4OTAxNjQsIm5iZiI6MTc4MDg4OTg2NCwicGF0aCI6Ii8xMjcyODE0NTEvNjA0MTY3MDU3LWZlNTBiNzc3LTdlMjktNDg0Ni1iZjExLTk2MTA4ZDZjZGM4Ni5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNjA4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDYwOFQwMzM3NDRaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT00YTk3ZTc2MThkMDk1MmUyNjg5NTIyNzcxMmVlMjJhMDExODczZmFlY2RhZWNiNjg3Njc5NmMxZTE0MzRjYzE0JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZwbmcifQ.EQYtEAFOtOcAOH_dPIbnuwXWewVubzfhRFP80y97qXo) 
+
+
+
+## 개발 환경 및 의존성
+
+### 환경
+
+| 항목 | 내용 |
+|------|------|
+| OS | macOS (Apple Silicon M2) |
+| Python | 3.13 |
+| 모델 | CLIP ViT-B/32 (OpenAI) |
+| 학습 데이터 | ABO 가구 이미지-텍스트 쌍 5,282장 |
+
+### 주요 라이브러리
+
+| 라이브러리 | 용도 |
+|-----------|------|
+| `open-clip-torch` | CLIP 모델 로드 및 임베딩 |
+| `faiss-cpu` | 벡터 유사도 검색 |
+| `streamlit` | 웹 UI |
+| `deep-translator` | 한→영 번역 |
+| `torch` / `torchvision` | 딥러닝 프레임워크 |
+---
 
 ## 설치 및 실행
+
+### 1. 저장소 클론
 
 ```bash
 git clone https://github.com/Gwakgarin/clip-furniture-search.git
 cd clip-furniture-search
+```
+
+### 2. 가상환경 및 의존성 설치
+
+```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-필수 다운로드 파일을 위 표의 위치에 넣은 뒤 실행합니다.
+### 3. 필수 파일 다운로드
+가중치 및 임베딩 파일은 Google Drive에 올려뒀습니다.
 
+📁 [Google Drive 다운로드](https://drive.google.com/drive/folders/1m5KZyj5QFVtuG_QL2pQzc-R7B82oTKG0?usp=drive_link)
+
+
+| 파일 | 경로 | 설명 |
+|------|------|------|
+| `clip_lora.pt` | `lora_weights/clip_lora.pt` | LoRA 학습 가중치 |
+| `image_embeddings.npy` | `data/image_embeddings.npy` | 이미지 임베딩 벡터 |
+| `valid_ids.csv` | `data/valid_ids.csv` | 이미지-메타데이터 매핑 |
+| `furniture_lora_data.zip` |  LoRA 재학습용 데이터 |
+
+### 4. 실행
 ```bash
 streamlit run app.py
 ```
 
-## LoRA 재학습
+Mac에서 OpenMP 충돌이 나면:
+```bash
+KMP_DUPLICATE_LIB_OK=TRUE streamlit run app.py
+```
 
-Colab에서 `furniture_lora_data.zip`을 압축 해제한 뒤 아래 명령으로 LoRA를 학습할 수 있습니다.
+## 데이터 파이프라인
+
+ABO 데이터셋을 처음부터 구성하려면 아래 순서로 실행합니다.
+
+```bash
+# 1. ABO 메타데이터 다운로드
+python pipeline.py --step download
+
+# 2. 가구 카테고리 필터링
+python pipeline.py --step filter
+
+# 3. 이미지 메타데이터 다운로드
+python pipeline.py --step image-metadata
+
+# 4. 가구 이미지 다운로드
+python pipeline.py --step images
+
+# 5. 자연어 캡션 생성
+python pipeline.py --step caption
+
+# 6. CLIP 이미지 임베딩 생성 (LoRA 적용)
+python pipeline.py --step embed
+```
+
+### LoRA 재학습
+
+Colab 환경을 권장합니다. `furniture_lora_data.zip` 압축 해제 후:
 
 ```bash
 python train_lora.py --epochs 3 --batch-size 32 --num-workers 2
 ```
 
-학습이 끝나면 `lora_weights/clip_lora.pt`가 생성됩니다. 이후 LoRA가 적용된 모델 기준으로 이미지 임베딩을 다시 생성합니다.
+학습 후 임베딩 생성
 
 ```bash
 python pipeline.py --step embed
 ```
+
+
+## 프로젝트 구조
+clip-furniture-search/
+├── app.py              # Streamlit UI
+├── pipeline.py         # 데이터 파이프라인
+├── train_lora.py       # LoRA 학습
+├── lora_utils.py       # LoRA 모듈 구현
+├── requirements.txt
+├── lora_weights/
+│   └── clip_lora.pt    # LoRA 가중치 (Drive에서 다운로드)
+└── data/
+├── abo-images/          # 가구 이미지
+├── abo-listings/        # ABO 메타데이터
+├── image_embeddings.npy # 이미지 임베딩 (Drive에서 다운로드)
+├── valid_ids.csv        # 이미지-메타데이터 매핑 (Drive에서 다운로드)
+└── furniture_captions.csv
+
+
+## 역할 분담
+20220975 김한나 :  LoRA 모듈 구현, CLIP 파인튜닝, 임베딩 생성 파이프라인 |
+20220930 곽가린 : 데이터 수집·전처리, Streamlit UI 구현, FAISS 검색 적용 | 
