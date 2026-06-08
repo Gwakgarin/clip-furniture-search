@@ -131,20 +131,26 @@ python pipeline.py --step embed
 
 
 ## 프로젝트 구조
+
+```
 clip-furniture-search/
 ├── app.py              # Streamlit UI
 ├── pipeline.py         # 데이터 파이프라인
 ├── train_lora.py       # LoRA 학습
 ├── lora_utils.py       # LoRA 모듈 구현
 ├── requirements.txt
+├── docs/
+│   ├── 검색어 입력.png
+│   └── 검색 결과.png
 ├── lora_weights/
 │   └── clip_lora.pt    # LoRA 가중치 (Drive에서 다운로드)
 └── data/
-├── abo-images/          # 가구 이미지
-├── abo-listings/        # ABO 메타데이터
-├── image_embeddings.npy # 이미지 임베딩 (Drive에서 다운로드)
-├── valid_ids.csv        # 이미지-메타데이터 매핑 (Drive에서 다운로드)
-└── furniture_captions.csv
+    ├── abo-images/          # 가구 이미지
+    ├── abo-listings/        # ABO 메타데이터
+    ├── image_embeddings.npy # 이미지 임베딩 (Drive에서 다운로드)
+    ├── valid_ids.csv        # 이미지-메타데이터 매핑 (Drive에서 다운로드)
+    └── furniture_captions.csv
+```
 
 
 ## 역할 분담
