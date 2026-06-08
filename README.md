@@ -97,22 +97,25 @@ KMP_DUPLICATE_LIB_OK=TRUE streamlit run app.py
 ABO 데이터셋을 처음부터 구성하려면 아래 순서로 실행합니다.
 
 ```bash
-# 1. ABO 메타데이터 다운로드
+# 1. 메타데이터 다운로드
 python pipeline.py --step download
 
-# 2. 가구 카테고리 필터링
+# 2. 압축 해제
+python pipeline.py --step extract
+
+# 3. 가구 필터링
 python pipeline.py --step filter
 
-# 3. 이미지 메타데이터 다운로드
+# 4. 이미지 메타데이터 다운로드
 python pipeline.py --step image-metadata
 
-# 4. 가구 이미지 다운로드
+# 5. 가구 이미지 다운로드
 python pipeline.py --step images
 
-# 5. 자연어 캡션 생성
+# 6. 캡션 생성
 python pipeline.py --step caption
 
-# 6. CLIP 이미지 임베딩 생성 (LoRA 적용)
+# 7. CLIP 임베딩 생성
 python pipeline.py --step embed
 ```
 

@@ -29,7 +29,6 @@ PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
 LISTINGS_DIR = DATA_DIR / "abo-listings" / "listings"
 IMAGES_DIR = DATA_DIR / "abo-images"
-IMAGES_CLEAN_DIR = DATA_DIR / "images_clean"
 
 IMAGE_METADATA_DIR = DATA_DIR / "abo-images" / "metadata"
 FURNITURE_PRODUCTS_FILE = LISTINGS_DIR / "furniture_products.jsonl"
@@ -373,7 +372,6 @@ def download_furniture_images(max_images=0):
     failed_count = 0
     manifest_count = 0
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    IMAGES_CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 
     with open(FURNITURE_IMAGES_FILE, 'w', encoding='utf-8', newline='') as manifest_f:
         fieldnames = [
