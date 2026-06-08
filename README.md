@@ -35,9 +35,10 @@ Top-K 이미지 반환
 
 | 항목 | 내용 |
 |------|------|
-| OS | macOS (Apple Silicon M2) |
+| OS | macOS (Apple Silicon M2) / Google Colab |
 | Python | 3.13 |
 | 모델 | CLIP ViT-B/32 (OpenAI) |
+| LoRA 학습 환경 | Google Colab (T4 GPU) |
 | 학습 데이터 | ABO 가구 이미지-텍스트 쌍 5,282장 |
 
 ### 주요 라이브러리
