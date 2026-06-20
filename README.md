@@ -63,9 +63,19 @@ cd clip-furniture-search
 
 ### 2. 가상환경 및 의존성 설치
 
+macOS / Linux:
+
 ```bash
 python -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows:
+
+```bash
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -80,7 +90,21 @@ pip install -r requirements.txt
 | `clip_lora.pt` | `lora_weights/clip_lora.pt` | LoRA 학습 가중치 |
 | `image_embeddings.npy` | `data/image_embeddings.npy` | 이미지 임베딩 벡터 |
 | `valid_ids.csv` | `data/valid_ids.csv` | 이미지-메타데이터 매핑 |
-| `furniture_lora_data.zip` |  LoRA 재학습용 데이터 |
+| `furniture_lora_data.zip` | 선택 사항 | LoRA 재학습용 데이터 |
+
+다운로드한 `clip_lora.pt`는 `lora_weights/` 폴더 안에 넣습니다.
+
+```bash
+mkdir -p lora_weights
+```
+
+최종 경로는 다음과 같습니다.
+
+```text
+lora_weights/clip_lora.pt
+```
+
+`image_embeddings.npy`와 `valid_ids.csv`는 `data/` 폴더 안에 배치합니다.
 
 ### 4. 실행
 ```bash
